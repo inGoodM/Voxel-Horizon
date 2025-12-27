@@ -1,0 +1,5 @@
+{
+  "name": "Voxel Horizon",
+  "description": "A high-performance voxel sandbox game engine with physics, procedural terrain, and cross-platform controls.",
+  "requestFramePermissions": []
+}
