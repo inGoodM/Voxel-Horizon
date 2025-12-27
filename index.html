@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Voxel Horizon Pro</title>
+    <title>Voxel Horizon Final</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: sans-serif; }
@@ -11,15 +11,15 @@
         .joystick { width: 120px; height: 120px; background: rgba(255,255,255,0.2); border-radius: 50%; position: relative; pointer-events: auto; border: 2px solid white; }
         .stick { width: 50px; height: 50px; background: white; border-radius: 50%; position: absolute; top: 35px; left: 35px; }
         .btn { width: 80px; height: 80px; background: rgba(0,0,0,0.4); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; pointer-events: auto; border: 2px solid white; font-weight: bold; }
-        #instructions { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; text-align: center; pointer-events: none; }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); color: white; display: flex; align-items: center; justify-content: center; z-index: 200; font-size: 20px; }
     </style>
 </head>
 <body>
+    <div id="overlay">НАЖМИ, ЧТОБЫ ИГРАТЬ</div>
     <div id="ui">
         <div class="joystick" id="j-base"><div class="stick" id="j-stick"></div></div>
         <div class="btn" id="jump-btn">JUMP</div>
     </div>
-    <div id="instructions">Нажми на экран, чтобы начать обзоp</div>
 
     <script>
         const scene = new THREE.Scene();
@@ -30,128 +30,108 @@
         document.body.appendChild(renderer.domElement);
 
         // Свет
-        scene.add(new THREE.AmbientLight(0x606060));
-        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
         sun.position.set(10, 20, 10);
         scene.add(sun);
 
-        // Мир
+        // Мир (Блоки)
         const geo = new THREE.BoxGeometry(1, 1, 1);
-        for(let x=-15; x<15; x++) {
-            for(let z=-15; z<15; z++) {
+        const floorGroup = new THREE.Group();
+        for(let x=-10; x<10; x++) {
+            for(let z=-10; z<10; z++) {
                 const mat = new THREE.MeshLambertMaterial({ color: 0x55aa55 });
                 const b = new THREE.Mesh(geo, mat);
                 b.position.set(x, 0, z);
-                scene.add(b);
-                const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x336633}));
+                floorGroup.add(b);
+                const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x000000, transparent: true, opacity: 0.1}));
                 b.add(e);
             }
         }
+        scene.add(floorGroup);
 
         // Персонаж
         const player = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), new THREE.MeshLambertMaterial({color: 0x3366ff}));
-        body.position.y = 0.9;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1, 0.4), new THREE.MeshLambertMaterial({color: 0x3366ff}));
+        body.position.y = 1;
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshLambertMaterial({color: 0xffdbac}));
-        head.position.y = 1.5;
+        head.position.y = 1.7;
         player.add(body, head);
         scene.add(player);
 
-        // Камера (от третьего лица)
-        const cameraPivot = new THREE.Group();
-        player.add(cameraPivot);
-        cameraPivot.add(camera);
-        camera.position.set(0, 2, 5); // Отодвигаем камеру назад
-        camera.lookAt(0, 1, 0);
+        // Настройка камеры (3-е лицо)
+        const camTarget = new THREE.Group();
+        player.add(camTarget);
+        camTarget.add(camera);
+        camera.position.set(0, 2, 5); // Камера сзади и выше
+        camera.lookAt(new THREE.Vector3(0, 1, 0));
 
-        // Переменные управления
+        // Управление
         let moveX = 0, moveZ = 0;
         let yaw = 0, pitch = 0;
-        let isTouchingLook = false;
-        let lastTouchX = 0, lastTouchY = 0;
+        const overlay = document.getElementById('overlay');
 
-        // Вращение камеры (Тач и Мышь)
-        window.addEventListener('touchstart', (e) => {
-            document.getElementById('instructions').style.display = 'none';
-            if (e.touches[0].clientX > window.innerWidth / 2) {
-                isTouchingLook = true;
-                lastTouchX = e.touches[0].clientX;
-                lastTouchY = e.touches[0].clientY;
+        overlay.addEventListener('click', () => {
+            overlay.style.display = 'none';
+            if(document.body.requestPointerLock) document.body.requestPointerLock();
+        });
+
+        // Мышь (ПК)
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                yaw -= e.movementX * 0.002;
+                pitch -= e.movementY * 0.002;
+                pitch = Math.max(-0.8, Math.min(0.5, pitch));
             }
         });
 
+        // Тач (Мобилки)
+        let lastT = {x:0, y:0};
         window.addEventListener('touchmove', (e) => {
-            for (let touch of e.touches) {
-                if (touch.clientX > window.innerWidth / 2) {
-                    let dx = touch.clientX - lastTouchX;
-                    let dy = touch.clientY - lastTouchY;
-                    yaw -= dx * 0.005;
-                    pitch -= dy * 0.005;
-                    pitch = Math.max(-0.5, Math.min(0.5, pitch));
-                    lastTouchX = touch.clientX;
-                    lastTouchY = touch.clientY;
+            const t = Array.from(e.touches).find(t => t.clientX > window.innerWidth/2);
+            if(t) {
+                if(lastT.x !== 0) {
+                    yaw -= (t.clientX - lastT.x) * 0.007;
+                    pitch -= (t.clientY - lastT.y) * 0.007;
                 }
+                lastT.x = t.clientX; lastT.y = t.clientY;
             }
-        });
+        }, {passive: false});
+        window.addEventListener('touchend', () => { lastT = {x:0, y:0}; });
 
-        window.addEventListener('touchend', () => isTouchingLook = false);
-
-        // Джойстик ходьбы
+        // Джойстик
         const jStick = document.getElementById('j-stick');
         const jBase = document.getElementById('j-base');
         jBase.addEventListener('touchmove', (e) => {
-            const t = Array.from(e.touches).find(t => t.clientX < window.innerWidth / 2);
-            if (!t) return;
+            const t = Array.from(e.touches).find(t => t.clientX < window.innerWidth/2);
+            if(!t) return;
             const r = jBase.getBoundingClientRect();
             const dx = t.clientX - (r.left + 60);
             const dy = t.clientY - (r.top + 60);
-            const d = Math.min(45, Math.sqrt(dx*dx + dy*dy));
+            const d = Math.min(40, Math.sqrt(dx*dx + dy*dy));
             const a = Math.atan2(dy, dx);
             jStick.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
-            moveZ = -Math.sin(a) * (d/45);
-            moveX = Math.cos(a) * (d/45);
+            moveZ = -Math.sin(a) * (d/40);
+            moveX = Math.cos(a) * (d/40);
         });
-
         jBase.addEventListener('touchend', () => {
             jStick.style.transform = 'translate(0,0)';
             moveX = 0; moveZ = 0;
         });
 
-        // Прыжок
-        document.getElementById('jump-btn').addEventListener('touchstart', () => {
-            if (player.position.y <= 0.1) {
-                let v = 0.25;
-                const timer = setInterval(() => {
-                    player.position.y += v;
-                    v -= 0.02;
-                    if (player.position.y <= 0) { player.position.y = 0; clearInterval(timer); }
-                }, 20);
-            }
-        });
-
         function animate() {
             requestAnimationFrame(animate);
-            
-            // Применяем вращение
             player.rotation.y = yaw;
-            cameraPivot.rotation.x = pitch;
-
-            // Движение
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-            const side = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+            camTarget.rotation.x = pitch;
             
-            player.position.addScaledVector(forward, moveZ * 0.15);
-            player.position.addScaledVector(side, moveX * 0.15);
+            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+            const side = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+            player.position.addScaledVector(dir, moveZ * 0.12);
+            player.position.addScaledVector(side, moveX * 0.12);
 
             renderer.render(scene, camera);
         }
         animate();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
