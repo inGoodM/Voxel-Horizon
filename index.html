@@ -1,64 +1,102 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Voxel Horizon</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-      }
-    }
-    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #87CEEB; }
-        #root { width: 100%; height: 100%; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: sans-serif; }
+        #ui { position: fixed; bottom: 40px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 40px; pointer-events: none; z-index: 100; }
+        .joystick { width: 120px; height: 120px; background: rgba(255,255,255,0.2); border-radius: 50%; position: relative; pointer-events: auto; border: 2px solid white; }
+        .stick { width: 50px; height: 50px; background: white; border-radius: 50%; position: absolute; top: 35px; left: 35px; border-radius: 50%; }
+        .btn { width: 80px; height: 80px; background: rgba(0,0,0,0.4); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; pointer-events: auto; border: 2px solid white; font-weight: bold; }
+        #menu-btn { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: rgba(0,0,0,0.5); color: white; border: 1px solid white; pointer-events: auto; z-index: 101; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="module">
-        import * as THREE from 'three';
-        
-        // Базовая инициализация, чтобы проверить работу на телефоне
+    <div id="menu-btn">МЕНЮ</div>
+    <div id="ui">
+        <div class="joystick" id="joy-base"><div class="stick" id="joy-stick"></div></div>
+        <div class="btn" id="jump-btn">JUMP</div>
+    </div>
+
+    <script>
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb);
+        scene.background = new THREE.Color(0x87CEEB);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('root').appendChild(renderer.domElement);
+        document.body.appendChild(renderer.domElement);
 
         // Свет
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 20, 10);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
 
-        // Создаем землю из блоков
+        // Мир (Трава)
         const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshLambertMaterial({ color: 0x55aa55 });
-        
         for(let x = -10; x < 10; x++) {
             for(let z = -10; z < 10; z++) {
+                const material = new THREE.MeshLambertMaterial({ color: 0x55aa55 });
                 const cube = new THREE.Mesh(geometry, material);
                 cube.position.set(x, 0, z);
                 scene.add(cube);
-                
-                const edges = new THREE.EdgesGeometry(geometry);
-                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
-                cube.add(line);
+                const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x000000 }));
+                cube.add(edges);
             }
         }
 
-        camera.position.set(0, 5, 10);
-        camera.lookAt(0, 0, 0);
+        // Игрок
+        const player = new THREE.Group();
+        scene.add(player);
+        player.add(camera);
+        camera.position.set(0, 1.7, 5);
+
+        // Управление (Джойстик)
+        let moveX = 0, moveZ = 0;
+        const stick = document.getElementById('joy-stick');
+        const base = document.getElementById('joy-base');
+
+        base.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            const r = base.getBoundingClientRect();
+            const dx = t.clientX - (r.left + 60);
+            const dy = t.clientY - (r.top + 60);
+            const d = Math.min(40, Math.sqrt(dx*dx + dy*dy));
+            const a = Math.atan2(dy, dx);
+            stick.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+            moveZ = -Math.sin(a) * (d/40);
+            moveX = Math.cos(a) * (d/40);
+        });
+
+        base.addEventListener('touchend', () => {
+            stick.style.transform = 'translate(0,0)';
+            moveX = 0; moveZ = 0;
+        });
+
+        // Прыжок
+        document.getElementById('jump-btn').addEventListener('touchstart', () => {
+            if(player.position.y < 0.1) {
+                let v = 0.2;
+                const interval = setInterval(() => {
+                    player.position.y += v;
+                    v -= 0.02;
+                    if(player.position.y <= 0) { player.position.y = 0; clearInterval(interval); }
+                }, 20);
+            }
+        });
 
         function animate() {
             requestAnimationFrame(animate);
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            dir.y = 0; dir.normalize();
+            const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), dir).normalize();
+            
+            player.position.addScaledVector(dir, moveZ * 0.1);
+            player.position.addScaledVector(side, -moveX * 0.1);
             renderer.render(scene, camera);
         }
         animate();
